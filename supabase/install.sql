@@ -362,7 +362,7 @@ begin
   insert into public.gp_staff(login_id, pw_hash, name, kind)
   values (lower(btrim(p_login_id)), extensions.crypt(p_pw, extensions.gen_salt('bf', 8)), btrim(p_name), 'admin')
   returning id into v_id;
-  update public.gp_settings set setup_code = null;
+  update public.gp_settings set setup_code = null where id;   -- Supabase는 WHERE 없는 UPDATE·DELETE를 막는다(pg_safeupdate)
   perform public.gp_bind_me('staff', v_id);
   return 'ok';
 end $$;
@@ -894,7 +894,8 @@ begin
     museum_time = c.museum_time, privacy = c.privacy, rules = c.rules, class_count = c.class_count, max_num = c.max_num,
     role_cap = c.role_cap, min_diary = c.min_diary, min_reflect = c.min_reflect, role_change_until = c.role_change_until,
     mission_open_at = c.mission_open_at, ending_open_at = c.ending_open_at, mission_close_at = c.mission_close_at,
-    ending_close_at = c.ending_close_at, join_code = c.join_code, auth_mode = c.auth_mode, google_domain = c.google_domain;
+    ending_close_at = c.ending_close_at, join_code = c.join_code, auth_mode = c.auth_mode, google_domain = c.google_domain
+  where id;
   return 'ok';
 end $$;
 
@@ -1026,10 +1027,10 @@ begin
   perform public.gp_require_admin();
   if p_confirm is distinct from '기록 지우기' then return 'confirm'; end if;
   delete from public.gp_bind where kind = 'student';
-  delete from public.gp_group_members;
-  delete from public.gp_groups;
-  delete from public.gp_students;
-  delete from public.gp_login_fail;
+  delete from public.gp_group_members where true;
+  delete from public.gp_groups where true;
+  delete from public.gp_students where true;
+  delete from public.gp_login_fail where true;
   return 'ok';
 end $$;
 

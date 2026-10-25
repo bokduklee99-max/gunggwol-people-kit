@@ -337,3 +337,5 @@ body.night #topinfo,body.night #topinfo .linkbtn{color:#BFB29C}
 .panel.danger{border-color:#E5B9B1;background:#FDF4F2}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .form h2{margin-top:10px}
+.field input,.field select{min-width:0}
+@media(max-width:560px){.form[data-form^="a"] .row2{grid-template-columns:1fr}}
