@@ -1,0 +1,7 @@
+web/config.js
+.vercel
+.env*
+.DS_Store
+.dorms-check/
+node_modules/
+dev/
