@@ -39,7 +39,8 @@ create table public.gp_settings (
   join_code text not null default upper(substr(md5(gen_random_uuid()::text), 1, 6)) check (join_code ~ '^[A-Z0-9]{4,12}$'),
   auth_mode text not null default 'code' check (auth_mode in ('code', 'google')),
   google_domain text check (google_domain is null or google_domain ~ '^[a-z0-9.-]+\.[a-z]{2,}$'),
-  setup_code text default upper(substr(md5(gen_random_uuid()::text), 1, 8)),
+  setup_code text default upper(substr(md5(gen_random_uuid()::text), 1, 12)),     -- 첫 관리자 만들 때 한 번(12자리)
+  setup_until timestamptz default now() + interval '24 hours',                 -- 설치 코드 유효 시각(지나면 new_setup_code.sql로 새로)
   schema_version smallint not null default 1
 );
 insert into public.gp_settings default values;
@@ -54,6 +55,7 @@ create table public.gp_staff (
   classes smallint[] not null default '{}',
   fails smallint not null default 0,
   locked_until timestamptz,
+  must_change boolean not null default false,    -- 관리자가 정해 준 비밀번호: 처음 로그인 때 바꾸게 한다
   created_at timestamptz not null default now()
 );
 
@@ -102,6 +104,7 @@ create table public.gp_students (
   checkin_at timestamptz,
   checkout_at timestamptz,
   fails smallint not null default 0,
+  locked_until timestamptz,                      -- 비밀번호 5번 틀리면 15분 잠금(저절로 풀림)
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (class_no, num)
@@ -154,6 +157,7 @@ create index gp_group_members_code on public.gp_group_members(code);
 -- 로그인 실패 기록(같은 기기에서 짧은 시간에 많이 틀리면 잠시 막는다)
 create table public.gp_login_fail (
   uid uuid not null,
+  kind text not null default 'login',
   at timestamptz not null default now()
 );
 create index gp_login_fail_uid on public.gp_login_fail(uid, at);
@@ -193,7 +197,8 @@ $$;
 create or replace function public.gp_my_staff()
 returns public.gp_staff language sql stable security definer set search_path = '' as $$
   select s.* from public.gp_staff s
-  where s.id = (select b.ref from public.gp_bind b where b.uid = (select auth.uid()) and b.kind = 'staff')
+  where s.id = (select b.ref from public.gp_bind b where b.uid = (select auth.uid()) and b.kind = 'staff'
+                  and b.created_at > now() - interval '12 hours')   -- 교사 로그인은 12시간 뒤 끊긴다(공용 PC 대비)
      or (s.email is not null and s.email = public.gp_google_email())
   limit 1
 $$;
@@ -298,9 +303,9 @@ create or replace function public.gp_too_many_fails()
 returns boolean language sql stable security definer set search_path = '' as $$
   select count(*) >= 15 from public.gp_login_fail where uid = (select auth.uid()) and at > now() - interval '10 minutes'
 $$;
-create or replace function public.gp_note_fail()
+create or replace function public.gp_note_fail(p_kind text default 'login')
 returns void language sql security definer set search_path = '' as $$
-  insert into public.gp_login_fail(uid) values ((select auth.uid()));
+  insert into public.gp_login_fail(uid, kind) values ((select auth.uid()), p_kind);
   delete from public.gp_login_fail where at < now() - interval '1 day';
 $$;
 
@@ -326,7 +331,8 @@ returns jsonb language sql stable security definer set search_path = '' as $$
     'role_change_until', c.role_change_until, 'mission_open_at', c.mission_open_at, 'ending_open_at', c.ending_open_at,
     'mission_close_at', c.mission_close_at, 'ending_close_at', c.ending_close_at,
     'auth_mode', c.auth_mode, 'google_domain', c.google_domain,
-    'setup_needed', c.setup_code is not null and not exists (select 1 from public.gp_staff where kind = 'admin'),
+    'setup_needed', c.setup_code is not null and now() < c.setup_until and not exists (select 1 from public.gp_staff where kind = 'admin'),
+    'setup_expired', c.setup_code is not null and now() >= c.setup_until and not exists (select 1 from public.gp_staff where kind = 'admin'),
     'now', now())
   from public.gp_settings c
 $$;
@@ -354,8 +360,10 @@ begin
   if (select auth.uid()) is null then raise exception 'no_session'; end if;
   select * into c from public.gp_settings for update;
   if exists (select 1 from public.gp_staff where kind = 'admin') or c.setup_code is null then return 'already'; end if;
-  if public.gp_too_many_fails() then return 'slow_down'; end if;
-  if upper(btrim(coalesce(p_code, ''))) <> c.setup_code then perform public.gp_note_fail(); return 'bad_code'; end if;
+  if c.setup_until is null or now() > c.setup_until then return 'expired'; end if;
+  -- 기기마다 10분 15번, 모든 기기를 합쳐 1시간 30번까지만 시도할 수 있다.
+  if public.gp_too_many_fails() or (select count(*) from public.gp_login_fail where kind = 'setup' and at > now() - interval '1 hour') >= 30 then return 'slow_down'; end if;
+  if upper(btrim(coalesce(p_code, ''))) <> c.setup_code then perform public.gp_note_fail('setup'); return 'bad_code'; end if;
   if lower(btrim(coalesce(p_login_id, ''))) !~ '^[a-z0-9_.-]{3,30}$' then return 'bad_id'; end if;
   if char_length(coalesce(p_pw, '')) < 8 then return 'short_pw'; end if;
   if char_length(btrim(coalesce(p_name, ''))) not between 1 and 20 then return 'bad_name'; end if;
@@ -384,6 +392,7 @@ begin
     return 'mismatch';
   end if;
   update public.gp_staff set fails = 0, locked_until = null where id = st.id;
+  delete from public.gp_bind where kind = 'staff' and created_at < now() - interval '12 hours';
   perform public.gp_bind_me('staff', st.id);
   return 'ok';
 end $$;
@@ -395,7 +404,8 @@ begin
   st := public.gp_require_staff();
   if st.pw_hash is not null and st.pw_hash <> extensions.crypt(coalesce(p_old, ''), st.pw_hash) then return 'mismatch'; end if;
   if char_length(coalesce(p_new, '')) < 8 then return 'short_pw'; end if;
-  update public.gp_staff set pw_hash = extensions.crypt(p_new, extensions.gen_salt('bf', 8)) where id = st.id;
+  if p_new = p_old then return 'same_pw'; end if;
+  update public.gp_staff set pw_hash = extensions.crypt(p_new, extensions.gen_salt('bf', 8)), must_change = false where id = st.id;
   return 'ok';
 end $$;
 
@@ -406,6 +416,7 @@ $$;
 
 -- 학생(입장 코드 방식): 입장 코드 + 반·번호·이름 + 4자리 비밀번호.
 -- 처음이면 새로 만들고(new), 있으면 이름·비밀번호를 확인해 이 기기를 연결한다(ok).
+-- 비밀번호·이름을 5번 틀리면 15분 동안 잠긴다(담임이 바로 풀 수도 있다).
 -- 실패: bad_join | mismatch | locked | slow_down | google_only | bad_class | bad_num | bad_name | bad_pin
 create or replace function public.gp_student_enter(p_join text, p_class smallint, p_num smallint, p_name text, p_pin text)
 returns text language plpgsql security definer set search_path = '' as $$
@@ -427,20 +438,22 @@ begin
     perform public.gp_bind_me('student', s.id);
     return 'new';
   end if;
-  if s.fails >= 5 then return 'locked'; end if;
+  if s.locked_until is not null and s.locked_until > now() then return 'locked'; end if;
   if public.gp_norm(s.name) <> public.gp_norm(v_name) or s.email is not null then
-    update public.gp_students set fails = fails + 1 where id = s.id;
+    update public.gp_students set fails = case when fails + 1 >= 5 then 0 else fails + 1 end,
+      locked_until = case when fails + 1 >= 5 then now() + interval '15 minutes' else locked_until end where id = s.id;
     perform public.gp_note_fail();
     return 'mismatch';
   end if;
   if s.pin_hash is null then          -- 담임이 비밀번호를 지운 학생: 이번에 새로 정한다
     update public.gp_students set pin_hash = extensions.crypt(p_pin, extensions.gen_salt('bf', 6)), fails = 0, updated_at = now() where id = s.id;
   elsif s.pin_hash <> extensions.crypt(p_pin, s.pin_hash) then
-    update public.gp_students set fails = fails + 1 where id = s.id;
+    update public.gp_students set fails = case when fails + 1 >= 5 then 0 else fails + 1 end,
+      locked_until = case when fails + 1 >= 5 then now() + interval '15 minutes' else locked_until end where id = s.id;
     perform public.gp_note_fail();
     return 'mismatch';
   else
-    update public.gp_students set fails = 0 where id = s.id;
+    update public.gp_students set fails = 0, locked_until = null where id = s.id;
   end if;
   perform public.gp_bind_me('student', s.id);
   return 'ok';
@@ -500,7 +513,7 @@ begin
   select * into s from public.gp_students where id = public.gp_my_sid();
   return jsonb_build_object(
     'staff', case when st.id is null then null else jsonb_build_object('id', st.id, 'name', st.name, 'kind', st.kind,
-      'classes', to_jsonb(st.classes), 'login_id', st.login_id) end,
+      'classes', to_jsonb(st.classes), 'login_id', st.login_id, 'must_change', st.must_change) end,
     'student', case when s.id is null then null else jsonb_build_object('id', s.id, 'class_no', s.class_no, 'num', s.num,
       'name', s.name, 'role_id', s.role_id, 'checkin_at', s.checkin_at, 'checkout_at', s.checkout_at,
       'tester', s.staff_id is not null) end,
@@ -750,7 +763,7 @@ begin
     (select count(*)::int from public.gp_entries e where e.student_id = s.id and e.photo_path is not null and char_length(coalesce(e.diary, '')) >= md),
     exists (select 1 from public.gp_final f where f.student_id = s.id and f.note is not null),
     coalesce((select char_length(f.reflection) from public.gp_final f where f.student_id = s.id), 0),
-    s.fails >= 5, s.pin_hash is not null, s.email is not null
+    s.locked_until is not null and s.locked_until > now(), s.pin_hash is not null, s.email is not null
   from public.gp_students s where s.class_no = p_class and s.staff_id is null order by s.num, s.name;
 end $$;
 
@@ -811,7 +824,7 @@ create or replace function public.gp_reset_pin(p_sid uuid)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
   if not public.gp_can_view(p_sid) then raise exception 'not_staff' using errcode = '42501'; end if;
-  update public.gp_students set pin_hash = null, fails = 0, updated_at = now() where id = p_sid and staff_id is null;
+  update public.gp_students set pin_hash = null, fails = 0, locked_until = null, updated_at = now() where id = p_sid and staff_id is null;
   delete from public.gp_bind where kind = 'student' and ref = p_sid;
 end $$;
 
@@ -850,7 +863,7 @@ begin
     'settings', to_jsonb(c) - 'setup_code' - 'id',
     'staff', (select coalesce(jsonb_agg(jsonb_build_object('id', s.id, 'login_id', s.login_id, 'name', s.name, 'kind', s.kind,
       'classes', to_jsonb(s.classes), 'email', s.email, 'has_pw', s.pw_hash is not null,
-      'locked', s.locked_until is not null and s.locked_until > now()) order by s.kind, s.login_id), '[]'::jsonb) from public.gp_staff s),
+      'locked', s.locked_until is not null and s.locked_until > now(), 'must_change', s.must_change) order by s.kind, s.login_id), '[]'::jsonb) from public.gp_staff s),
     'counts', jsonb_build_object(
       'students', (select count(*) from public.gp_students where staff_id is null),
       'entries', (select count(*) from public.gp_entries e join public.gp_students s on s.id = e.student_id where s.staff_id is null),
@@ -987,13 +1000,14 @@ begin
   if v_email is not null and exists (select 1 from public.gp_staff where email = v_email and id is distinct from v_id) then return 'dup_email'; end if;
   if v_id is null then
     if coalesce(v_pw, '') = '' and v_email is null then return 'short_pw'; end if;
-    insert into public.gp_staff(login_id, pw_hash, email, name, kind, classes)
+    insert into public.gp_staff(login_id, pw_hash, email, name, kind, classes, must_change)
     values (v_login, case when coalesce(v_pw, '') <> '' then extensions.crypt(v_pw, extensions.gen_salt('bf', 8)) end,
-      v_email, btrim(p->>'name'), v_kind, v_classes);
+      v_email, btrim(p->>'name'), v_kind, v_classes, coalesce(v_pw, '') <> '');
   else
     if v_id = me.id and v_kind <> 'admin' then return 'last_admin'; end if;
     update public.gp_staff set login_id = v_login, email = v_email, name = btrim(p->>'name'), kind = v_kind, classes = v_classes,
       pw_hash = case when coalesce(v_pw, '') <> '' then extensions.crypt(v_pw, extensions.gen_salt('bf', 8)) else pw_hash end,
+      must_change = case when coalesce(v_pw, '') <> '' then v_id <> me.id else must_change end,
       fails = 0, locked_until = null
     where id = v_id;
     if coalesce(v_pw, '') <> '' and v_id <> me.id then delete from public.gp_bind where kind = 'staff' and ref = v_id; end if;

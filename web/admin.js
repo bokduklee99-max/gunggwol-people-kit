@@ -196,7 +196,7 @@
   function staffView() {
     const cc = ADM.settings.class_count, s = SEDIT;
     const list = ADM.staff.map(x => `<tr><td><button class="namebtn" data-act="editStaff" data-v="${x.id}">${h(x.name)}</button><span class="sm">${h(x.login_id)}${x.email ? ' · ' + h(x.email) : ''}</span></td>
-      <td class="nw">${x.kind === 'admin' ? '관리자' : '담임'}</td><td class="nw">${(x.classes || []).join('·') || '-'}</td><td class="nw">${x.locked ? '🔒 잠김' : ''}</td></tr>`).join('');
+      <td class="nw">${x.kind === 'admin' ? '관리자' : '담임'}</td><td class="nw">${(x.classes || []).join('·') || '-'}</td><td class="nw">${x.locked ? '🔒 잠김' : x.must_change ? '첫 로그인 전' : ''}</td></tr>`).join('');
     const form = s ? `<form class="form panel" data-form="astaff" autocomplete="off">
       <h3>${s.id ? '계정 고치기' : '새 교사 계정'}</h3>
       <div class="row2"><div class="field"><label for="t-name">이름</label><input id="t-name" maxlength="20" value="${h(s.name || '')}" required></div>
@@ -207,7 +207,7 @@
         <p class="hint">학교 구글 로그인을 켠 경우, 이 이메일로 로그인하면 바로 선생님 화면이 열리오.</p></div>
       <div class="field"><label for="t-pw">${s.id ? '새 비밀번호(바꿀 때만)' : '처음 비밀번호(8자 이상)'}</label>
         <div class="grow"><input id="t-pw" autocomplete="new-password" spellcheck="false"><button class="btn line" type="button" data-act="genPw">만들기</button></div>
-        <p class="hint">만든 비밀번호는 저장하면 다시 볼 수 없소. 선생님께 따로 전하고, 로그인 뒤 [내 비밀번호 바꾸기]로 바꾸게 하시오.</p></div>
+        <p class="hint">저장하면 다시 볼 수 없소. 선생님께 따로 전하시오. 그 선생님은 처음 로그인할 때 이 비밀번호를 자기 비밀번호로 바꾸게 되오.</p></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" type="submit">저장</button><button class="btn alt" type="button" data-act="cancelStaff">취소</button>
         ${s.id ? `<button class="btn line" type="button" data-act="delStaff" data-v="${s.id}">계정 지우기</button>` : ''}</div>
     </form>` : '<div style="margin:12px 0"><button class="btn sm" data-act="newStaff">새 교사 계정</button></div>';

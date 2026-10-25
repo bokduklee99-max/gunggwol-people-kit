@@ -199,7 +199,7 @@ async function ensureSession() {
 const ENTER_MSG = {
   bad_join: '입장 코드가 맞지 않소. 선생님께 다시 확인하시오.',
   mismatch: '이름이나 비밀번호가 맞지 않소. 처음 정한 숫자 4자리를 넣으시오. 잊었거나, 반·번호를 잘못 고른 친구가 먼저 들어온 것 같으면 담임 선생님께 말씀드리시오.',
-  locked: '비밀번호를 여러 번 틀려 잠겼소. 담임 선생님께 풀어 달라고 하시오.',
+  locked: '비밀번호를 5번 틀려 15분 동안 잠겼소. 15분 뒤 다시 하거나, 담임 선생님께 풀어 달라고 하시오.',
   slow_down: '너무 여러 번 틀렸소. 10분 뒤 다시 해 보시오.',
   google_only: '이 행사는 학교 구글 계정으로 들어오오.',
   code_only: '이 행사는 입장 코드로 들어오오.',
@@ -207,7 +207,8 @@ const ENTER_MSG = {
   taken: '그 반·번호로 이미 다른 친구가 들어와 있소. 번호를 확인하고, 맞으면 담임 선생님께 말씀드리시오.',
   bad_class: '반을 다시 고르시오.', bad_num: '번호를 다시 고르시오.', bad_name: '이름을 적으시오(20자까지).',
   bad_pin: '비밀번호는 숫자 4자리로 정하시오.', bad_code: '설치 코드가 맞지 않소. SQL 실행 결과 칸의 코드를 넣으시오.',
-  bad_id: '아이디는 영문 소문자·숫자·._- 3~30자로 정하시오.', short_pw: '비밀번호는 8자 이상으로 정하시오.', already: '이미 관리자가 있소. 로그인하시오.'
+  bad_id: '아이디는 영문 소문자·숫자·._- 3~30자로 정하시오.', short_pw: '비밀번호는 8자 이상으로 정하시오.', already: '이미 관리자가 있소. 로그인하시오.',
+  expired: '설치 코드의 유효 시간(24시간)이 지났소. Supabase SQL Editor에서 supabase/new_setup_code.sql을 실행해 새 코드를 받으시오.'
 };
 function login() {
   const google = P.auth_mode === 'google', t = V.tab;
@@ -237,7 +238,7 @@ function login() {
       <button class="btn block" type="submit">선생님으로 들어가기</button>
     </form>
     ${google ? '<div style="margin-top:10px"><button class="btn line block" data-act="google">등록된 구글 계정으로 들어가기</button></div>' : ''}
-    <p class="muted" style="margin-top:10px;font-size:14px">계정은 담당(관리자) 선생님이 만들어 드리오.</p>`}
+    <p class="muted" style="margin-top:10px;font-size:14px">계정은 담당(관리자) 선생님이 만들어 드리오. 로그인은 12시간 뒤 저절로 끊기오. 공용 PC·전자칠판에서는 다 쓰면 꼭 로그아웃하시오.</p>`}
   <div style="margin-top:16px"><button class="btn line block" data-act="guide">📖 사용법 보기</button></div>
   <section class="panel"><h3>개인정보 안내</h3>${String(P.privacy || '').split('\n').filter(Boolean).map(p => `<p>${h(p)}</p>`).join('')}</section>`;
 }
@@ -264,7 +265,8 @@ async function submitStaffLogin() {
     const r = await rpc('gp_staff_login', { p_login_id: id, p_pw: pw });
     const M = { mismatch: '아이디나 비밀번호가 맞지 않소.', locked: '여러 번 틀려 15분 동안 잠겼소. 관리자 선생님께 풀어 달라고 하시오.', slow_down: '너무 여러 번 틀렸소. 10분 뒤 다시 해 보시오.' };
     if (r !== 'ok') { LOGIN_MSG = h(M[r] || r); render(); return; }
-    LOGIN_MSG = ''; await enter();
+    LOGIN_MSG = ''; try { localStorage.setItem('gp:staff', '1'); } catch (e) {}
+    await enter();
   } catch (e) { LOGIN_MSG = h(errText(e)); render(); } finally { busy = false; }
 }
 async function signInGoogle() {
@@ -288,7 +290,8 @@ function resetState() {
 function setup() {
   $app.innerHTML = `
   <p class="eyebrow">처음 설치</p><h1>관리자 계정 만들기</h1><div class="rule"></div>
-  <p class="lead">설치 SQL을 실행했을 때 결과 칸에 나온 <b>설치 코드</b>를 넣고, 담당 선생님이 쓸 관리자 아이디와 비밀번호를 정하시오. 한 번만 하는 일이오.</p>
+  <p class="lead">설치 SQL을 실행했을 때 결과 칸에 나온 <b>설치 코드</b>(12자리, 24시간 유효)를 넣고, 담당 선생님이 쓸 관리자 아이디와 비밀번호를 정하시오. 한 번만 하는 일이오.</p>
+  ${P.setup_expired ? `<div class="banner no" role="alert" style="margin-top:14px">${h(ENTER_MSG.expired)} 그다음 이 화면을 새로 고치시오.</div>` : ''}
   ${LOGIN_MSG ? `<div class="banner no" role="alert" style="margin-top:14px">${LOGIN_MSG}</div>` : ''}
   <form class="form" data-form="setup" autocomplete="off">
     <div class="field"><label for="s-code">설치 코드</label><input id="s-code" autocapitalize="characters" spellcheck="false" required></div>
@@ -312,6 +315,32 @@ async function submitSetup() {
   } catch (e) { LOGIN_MSG = h(errText(e)); render(); } finally { busy = false; }
 }
 
+/* ---------- 교사 첫 로그인: 관리자가 정해 준 비밀번호 바꾸기 ---------- */
+function pwchange() {
+  $app.innerHTML = `
+  <p class="eyebrow">${h(staff().name)} 선생님</p><h1>비밀번호 바꾸기</h1><div class="rule"></div>
+  <p class="lead">관리자 선생님이 정해 준 비밀번호로 처음 들어오셨소. 나만 아는 비밀번호로 바꾼 뒤 쓰시오.</p>
+  ${LOGIN_MSG ? `<div class="banner no" role="alert" style="margin-top:14px">${LOGIN_MSG}</div>` : ''}
+  <form class="form" data-form="pwfirst" autocomplete="on">
+    <div class="field"><label for="c-old">받은 비밀번호</label><input id="c-old" type="password" autocomplete="current-password" required></div>
+    <div class="field"><label for="c-new">새 비밀번호(8자 이상)</label><input id="c-new" type="password" autocomplete="new-password" required></div>
+    <div class="field"><label for="c-new2">새 비밀번호 다시</label><input id="c-new2" type="password" autocomplete="new-password" required></div>
+    <button class="btn block" type="submit">바꾸고 시작하기</button>
+    <button class="btn line block" type="button" data-act="signout">로그아웃</button>
+  </form>`;
+}
+const PW_MSG = { mismatch: '받은 비밀번호가 맞지 않소.', short_pw: '새 비밀번호는 8자 이상으로 정하시오.', same_pw: '받은 비밀번호와 다르게 정하시오.' };
+async function submitPwFirst() {
+  const o = document.getElementById('c-old').value, n = document.getElementById('c-new').value, n2 = document.getElementById('c-new2').value;
+  if (n !== n2) { LOGIN_MSG = '새 비밀번호 두 칸이 다르오.'; render(); return; }
+  if (busy) return; busy = true;
+  try {
+    const r = await rpc('gp_staff_password', { p_old: o, p_new: n });
+    if (r !== 'ok') { LOGIN_MSG = h(PW_MSG[r] || r); render(); return; }
+    LOGIN_MSG = ''; toast('비밀번호를 바꿨소.'); await enter();
+  } catch (e) { LOGIN_MSG = h(errText(e)); render(); } finally { busy = false; }
+}
+
 /* ---------- 로그인 직후 ---------- */
 async function enter() {
   try {
@@ -320,13 +349,21 @@ async function enter() {
     SKEW = +new Date(ME.now) - Math.round((t0 + Date.now()) / 2);
     setContent(await rpc('gp_content'));           // 교사는 꺼 둔 역할까지 받는다
   } catch (e) { LOGIN_MSG = h(errText(e)); V.view = 'login'; render(); return; }
+  if (staff() && staff().must_change) { V.mode = 'staff'; V.view = 'pwchange'; render(true); return; }
   if (staff() && !(stu() && V.mode === 'student' && V.view !== 'login')) {
+    try { localStorage.setItem('gp:staff', '1'); } catch (e) {}
     V.mode = 'staff'; V.cls = staffClasses()[0] || (isAdmin() ? 1 : 0);
     await openStaff(); staffGuideOnce(); return;
   }
   if (stu()) { await loadStudent(); goStudentHome(); return; }
   if (P.auth_mode === 'google' && ME.google) { V.view = 'register'; render(true); return; }
-  V.view = 'login'; render();
+  staffExpired();
+}
+// 교사 로그인은 12시간 뒤 끊긴다(공용 PC 대비). 끊긴 기기에서는 안내와 함께 선생님 로그인 화면으로.
+function staffExpired() {
+  let was = false; try { was = !!localStorage.getItem('gp:staff'); localStorage.removeItem('gp:staff'); } catch (e) {}
+  if (was) { LOGIN_MSG = '로그인한 지 12시간이 지나 저절로 로그아웃되었소. 다시 로그인하시오.'; V.tab = 'staff'; }
+  V.mode = 'student'; V.view = 'login'; render(true);
 }
 async function reloadMe() { ME = await rpc('gp_me'); }
 async function loadStudent() {
@@ -760,7 +797,10 @@ async function openStaff(quiet) {
     const counts = {}; (cnt || []).forEach(r => counts[r.role_id] = r.n);
     const groups = {}; (grp || []).forEach(r => groups[r.sid] = r.code);
     STAFF = { cls: V.cls, rows: rows || [], counts, groups, at: Date.now() };
-  } catch (e) { STAFF = { cls: V.cls, rows: [], counts: {}, err: errText(e) }; }
+  } catch (e) {
+    if (/not_staff/.test(e && e.message || '')) { ME = null; STAFF = null; staffExpired(); return; }
+    STAFF = { cls: V.cls, rows: [], counts: {}, err: errText(e) };
+  }
   render(!quiet);
 }
 function staffTabs() {
@@ -780,6 +820,7 @@ function staffView() {
   ${tabs.length > 1 ? `<div class="tabs" role="group" aria-label="반 고르기">${tabs.map(c => `<button data-act="cls" data-v="${c}" aria-pressed="${c === S.cls}">${c ? c + '반' : '체험'}</button>`).join('')}</div>` : ''}
   ${!admin && !staffClasses().length ? '<div class="banner info">맡은 반이 아직 없소. 관리자 선생님께 반을 정해 달라고 하시오.</div>' : ''}
   ${S.err ? `<div class="banner no">${h(S.err)}</div>` : ''}
+  <p class="muted" style="font-size:13.5px;margin-top:6px">🔒 공용 PC·전자칠판에서는 다 쓰면 오른쪽 위 <b>로그아웃</b>을 누르시오. 로그인은 12시간 뒤 저절로 끊기오.</p>
   <div class="stats four">
     <div class="stat"><b>${S.rows.length}</b><span>등록</span></div>
     <div class="stat"><b>${chosen}</b><span>역할</span></div>
@@ -896,7 +937,8 @@ function staffCards() {
     { seal: '班', title: '반 현황', text: '맡은 반 학생의 등록·역할·출석·미션·소감을 한눈에 보오. 현장 시간에는 30초마다 저절로 새로 고치고, 출석·종례 확인을 안 한 학생 이름이 위에 나오오.' },
     { seal: '錄', title: '학생 기록', text: '학생 이름을 누르면 사진·일기·한마디·소감 전문을 보오. 응답 CSV에는 학생이 답할 때의 질문 문구가 함께 들어가 생기부 근거로 쓰기 좋소.' },
     { seal: '鍵', title: '비밀번호를 잊은 학생', text: '학생 이름 → 비밀번호 지우기. 학생이 새 숫자 4자리로 다시 들어오면 되오. 번호를 잘못 골라 남의 자리에 들어간 학생은 지우고 다시 들어오게 하시오.' },
-    { seal: '試', title: '학생으로 체험하기', text: '시간·정원 제한 없이 학생 화면 전체(역할·미션·엔딩)를 해 볼 수 있소. 실제 반에는 들어가지 않소.' }
+    { seal: '試', title: '학생으로 체험하기', text: '시간·정원 제한 없이 학생 화면 전체(역할·미션·엔딩)를 해 볼 수 있소. 실제 반에는 들어가지 않소.' },
+    { seal: '鎖', title: '로그아웃', text: '로그인은 12시간 뒤 저절로 끊기오. 교무실 공용 PC나 교실 전자칠판에서 썼다면 다 쓴 뒤 오른쪽 위 로그아웃을 꼭 누르시오. 학생 기록이 다음 사람에게 보일 수 있소.' }
   ];
   if (isAdmin()) c.push({ seal: '管', title: '관리', text: '위쪽 [관리]에서 행사 날짜·시각, 반 수, 정원, 입장 코드, 안내 문구, 역할·미션·엔딩, 담임 계정, 기록 지우기를 다루오. 처음이면 [행사 설정]부터 하시오.' });
   return c;
@@ -913,7 +955,7 @@ function topinfo() {
   const who = V.mode === 'staff' && st ? staffLabel() : s ? (s.tester ? '체험 모드' : `${s.class_no}반 ${s.num}번`) : '';
   $info.innerHTML = `<span>${h(who)}</span><button class="linkbtn" data-act="signout">로그아웃</button>`;
 }
-const VIEWS = { login, setup, register, roles, detail, home, ending, staff: staffView, student: studentView };
+const VIEWS = { login, setup, register, roles, detail, home, ending, pwchange, staff: staffView, student: studentView };
 function render(push) {
   if (V.view !== 'ending') document.body.classList.remove('night');
   if (V.view !== 'home') stopGeo();
@@ -988,7 +1030,7 @@ document.addEventListener('click', e => {
   if (el && !el.disabled && A[el.dataset.act]) A[el.dataset.act](el.dataset.v, el);
 });
 const FORMS = {
-  enter: submitEnter, slogin: submitStaffLogin, setup: submitSetup, reg: submitReg,
+  enter: submitEnter, slogin: submitStaffLogin, setup: submitSetup, reg: submitReg, pwfirst: submitPwFirst,
   gjoin() {
     const v = (document.getElementById('g-code').value || '').trim();
     if (!/^[0-9]{4}$/.test(v)) { toast('코드 4자리 숫자를 넣으시오.'); return; }
@@ -996,7 +1038,7 @@ const FORMS = {
   },
   async mypw() {
     const o = document.getElementById('p-old').value, n = document.getElementById('p-new').value;
-    try { const r = await rpc('gp_staff_password', { p_old: o, p_new: n }); toast(r === 'ok' ? '바꿨소.' : r === 'short_pw' ? '8자 이상으로 정하시오.' : '지금 비밀번호가 맞지 않소.'); if (r === 'ok') render(); }
+    try { const r = await rpc('gp_staff_password', { p_old: o, p_new: n }); toast(r === 'ok' ? '바꿨소.' : r === 'mismatch' ? '지금 비밀번호가 맞지 않소.' : PW_MSG[r] || r); if (r === 'ok') render(); }
     catch (e) { toast(errText(e)); }
   }
 };
@@ -1039,7 +1081,7 @@ if (sb) sb.auth.onAuthStateChange((ev, session) => {
   const { data, error } = await sb.auth.getSession();
   if (location.search.includes('code=') || location.hash.includes('access_token')) history.replaceState(null, '', location.pathname);
   TOKEN = data && data.session ? data.session.access_token : null;
-  if (P.setup_needed) { V.view = 'setup'; render(); return; }
+  if (P.setup_needed || P.setup_expired) { V.view = 'setup'; render(); return; }
   if (error || !data.session) { V.view = 'login'; render(); }
   else await enter();
   if (!staff()) whenOpeningDone(studentGuideOnce);
