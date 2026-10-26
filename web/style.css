@@ -352,3 +352,4 @@ body.night #topinfo,body.night #topinfo .linkbtn{color:#BFB29C}
 .dcard b{font-family:var(--fs);font-size:20px}
 .dcard span:last-child{color:var(--sub);font-size:14.5px;line-height:1.5}
 @media(hover:hover){.dcard:hover{border-color:var(--red)}}
+[hidden]{display:none !important}
