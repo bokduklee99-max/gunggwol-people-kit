@@ -224,7 +224,8 @@ function demoLogin() {
   </div>
   <p class="muted" style="margin-top:14px;font-size:14px">위쪽 막대에서 시각을 <b>행사 전 · 현장 · 엔딩 열림</b>으로 바꿔 볼 수 있소. 여기서 쓴 글과 사진은 이 기기에만 남고 어디로도 보내지 않소. 실제 학생 이름은 넣지 마시오.</p>
   <div style="margin-top:16px"><button class="btn line block" data-act="guide">📖 학생용 사용법 카드 보기</button></div>
-  <section class="panel"><h3>우리 학교에서 쓰려면</h3><p>학교마다 따로 설치하오(무료). 학생 기록은 그 학교 DB에만 저장되고, 미션·엔딩 문구는 관리자 화면에서 고칠 수 있소. 설치 안내서는 GitHub 저장소의 INSTALL.md에 있소.</p></section>`;
+  <section class="panel"><h3>우리 학교에서 쓰려면</h3><p>학교마다 따로 설치하오(무료). 학생 기록은 그 학교 DB에만 저장되고, 미션·엔딩 문구는 관리자 화면에서 고칠 수 있소. 설치 안내서는 GitHub 저장소(<a href="https://github.com/bokduklee99-max/gunggwol-people-kit" target="_blank" rel="noopener">gunggwol-people-kit</a>)의 INSTALL.md에 있소.</p></section>
+  ${credit()}`;
 }
 function login() {
   if (DEMO) { demoLogin(); return; }
@@ -257,8 +258,11 @@ function login() {
     ${google ? '<div style="margin-top:10px"><button class="btn line block" data-act="google">등록된 구글 계정으로 들어가기</button></div>' : ''}
     <p class="muted" style="margin-top:10px;font-size:14px">계정은 담당(관리자) 선생님이 만들어 드리오. 로그인은 12시간 뒤 저절로 끊기오. 공용 PC·전자칠판에서는 다 쓰면 꼭 로그아웃하시오.</p>`}
   <div style="margin-top:16px"><button class="btn line block" data-act="guide">📖 사용법 보기</button></div>
-  <section class="panel"><h3>개인정보 안내</h3>${String(P.privacy || '').split('\n').filter(Boolean).map(p => `<p>${h(p)}</p>`).join('')}</section>`;
+  <section class="panel"><h3>개인정보 안내</h3>${String(P.privacy || '').split('\n').filter(Boolean).map(p => `<p>${h(p)}</p>`).join('')}</section>
+  ${credit()}`;
 }
+// 출처 표시(CC BY-NC 4.0). 고쳐 쓰는 학교도 이 줄은 남겨 주세요.
+const credit = () => '<p class="credit">궁궐 사람들 키트 · 선유고 이재영(이복덕쌤) · <a href="https://github.com/bokduklee99-max/gunggwol-people-kit" target="_blank" rel="noopener">CC BY-NC 4.0</a> · 지도 © OpenStreetMap</p>';
 async function submitEnter() {
   const v = id => (document.getElementById(id).value || '').trim();
   const a = { p_join: v('f-join'), p_class: +v('f-class'), p_num: +v('f-num'), p_name: v('f-name'), p_pin: v('f-pin') };
