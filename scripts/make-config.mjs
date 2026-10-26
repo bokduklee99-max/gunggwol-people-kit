@@ -8,6 +8,13 @@ const url = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
 const key = (process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
 const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'config.js');
 
+// 둘러보기판(GP_DEMO=1): 서버 없이 demo.js로 돈다. Supabase 값은 쓰지 않는다.
+if (process.env.GP_DEMO === '1') {
+  writeFileSync(out, '// 자동 생성(scripts/make-config.mjs). 둘러보기판: 서버 없이 이 기기 안에서만 돈다.\nwindow.CFG = {"demo":true};\n');
+  console.log('web/config.js 만듦: 둘러보기판');
+  process.exit(0);
+}
+
 if (key.startsWith('sb_secret_') || /service_role/.test(Buffer.from((key.split('.')[1] || ''), 'base64').toString())) {
   console.error('SUPABASE_PUBLISHABLE_KEY에 비밀(service_role/secret) 키가 들어 있습니다. 공개용(publishable 또는 anon) 키를 넣으세요.');
   process.exit(1);

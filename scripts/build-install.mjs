@@ -1,6 +1,6 @@
 // supabase/schema.sql + 기본 내용(supabase/content/*.json) → supabase/install.sql (선생님이 SQL Editor에 한 번에 붙여 넣는 파일)
 // 사용: node scripts/build-install.mjs
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -41,4 +41,7 @@ select setup_code as "설치 코드(관리자 만들 때 한 번)", join_code as
 
 const head = `-- 궁궐 사람들 키트 설치 파일 (자동 생성: node scripts/build-install.mjs — 직접 고치지 말고 schema.sql·content/를 고친다)\n`;
 writeFileSync(join(root, 'supabase/install.sql'), head + read('supabase/schema.sql') + seed + tail);
+// 둘러보기판(web/demo.js)도 같은 원본을 쓴다.
+mkdirSync(join(root, 'web/demo'), { recursive: true });
+writeFileSync(join(root, 'web/demo/content.json'), data);
 console.log('supabase/install.sql', roles.length, 'roles');

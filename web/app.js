@@ -6,8 +6,9 @@
 const BUCKET = 'gp-photos';
 const $app = document.getElementById('app');
 const $info = document.getElementById('topinfo');
-const READY = !!(window.CFG && CFG.url && CFG.key);
-const sb = READY ? window.supabase.createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } }) : null;
+const DEMO = !!(window.CFG && CFG.demo && window.gpDemo);   // 둘러보기판: 서버 없이 demo.js가 대신 답한다
+const READY = DEMO || !!(window.CFG && CFG.url && CFG.key);
+const sb = DEMO ? window.gpDemo : READY ? window.supabase.createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } }) : null;
 
 /* ---------- 상태 ---------- */
 let P = null;        // gp_public(): 행사 설정
@@ -176,7 +177,7 @@ function paintDone(k) {
 function flushAll() { Object.keys(SV).forEach(k => { if (SV[k].state === 'dirty' || SV[k].state === 'error') flush(k); }); }
 // 화면을 닫거나 다른 앱으로 넘어갈 때: 저장하지 못한 글을 keepalive 요청으로 한 번 더 보낸다.
 function flushBeacon() {
-  if (!TOKEN) return;
+  if (!TOKEN || DEMO) return;
   Object.keys(SV).forEach(k => {
     const s = SV[k]; if (!(s.state === 'dirty' || s.state === 'error') || s.val == null) return;
     const [fn, args] = saveArgs(k, s.val);
@@ -210,7 +211,23 @@ const ENTER_MSG = {
   bad_id: '아이디는 영문 소문자·숫자·._- 3~30자로 정하시오.', short_pw: '비밀번호는 8자 이상으로 정하시오.', already: '이미 관리자가 있소. 로그인하시오.',
   expired: '설치 코드의 유효 시간(24시간)이 지났소. Supabase SQL Editor에서 supabase/new_setup_code.sql을 실행해 새 코드를 받으시오.'
 };
+// 둘러보기판 시작 화면: 학생·담임·관리자 가운데 골라 둘러본다.
+function demoLogin() {
+  $app.innerHTML = `
+  <p class="eyebrow">둘러보기판 · ${h(P.event_label)}</p>
+  <h1>궁궐 사람들</h1><div class="rule"></div>
+  <p class="lead">고종 시대 경복궁 사람 한 명이 되어 궁과 박물관에서 미션 세 개를 하고, 정해진 시각에 모두에게 엔딩이 열리는 현장체험학습 앱이오. 누구로 둘러볼지 고르시오.</p>
+  <div class="demochoice">
+    <button class="dcard" data-act="demoAs" data-v="student"><span class="seal lg" aria-hidden="true">人</span><b>학생으로</b><span>역할 고르기 → 편지 → 미션(사진·일기 자동 저장) → 엔딩·소감</span></button>
+    <button class="dcard" data-act="demoAs" data-v="homeroom"><span class="seal lg" aria-hidden="true">班</span><b>담임으로</b><span>예시 반 현황, 학생 기록 보기, 응답 CSV, 학생으로 체험하기</span></button>
+    <button class="dcard" data-act="demoAs" data-v="admin"><span class="seal lg" aria-hidden="true">管</span><b>관리자로</b><span>행사 설정, 역할·미션·엔딩 고치기, 교사 계정</span></button>
+  </div>
+  <p class="muted" style="margin-top:14px;font-size:14px">위쪽 막대에서 시각을 <b>행사 전 · 현장 · 엔딩 열림</b>으로 바꿔 볼 수 있소. 여기서 쓴 글과 사진은 이 기기에만 남고 어디로도 보내지 않소. 실제 학생 이름은 넣지 마시오.</p>
+  <div style="margin-top:16px"><button class="btn line block" data-act="guide">📖 학생용 사용법 카드 보기</button></div>
+  <section class="panel"><h3>우리 학교에서 쓰려면</h3><p>학교마다 따로 설치하오(무료). 학생 기록은 그 학교 DB에만 저장되고, 미션·엔딩 문구는 관리자 화면에서 고칠 수 있소. 설치 안내서는 GitHub 저장소의 INSTALL.md에 있소.</p></section>`;
+}
 function login() {
+  if (DEMO) { demoLogin(); return; }
   const google = P.auth_mode === 'google', t = V.tab;
   $app.innerHTML = `
   <p class="eyebrow">${h(P.school_name)} · ${h(P.event_label)} · ${h(day(P.mission_open_at))}</p>
@@ -980,6 +997,7 @@ function schedule() {
 
 /* ---------- 이벤트 ---------- */
 const A = {
+  async demoAs(v) { if (busy) return; busy = true; try { await sb.demoAs(v); await enter(); if (v === 'admin') { V.view = 'admin'; render(true); } } finally { busy = false; } },
   ltab(v) { V.tab = v; LOGIN_MSG = ''; render(); },
   google() { signInGoogle(); },
   signout() { signOut(); },

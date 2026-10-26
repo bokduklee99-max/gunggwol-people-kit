@@ -339,3 +339,16 @@ body.night #topinfo,body.night #topinfo .linkbtn{color:#BFB29C}
 .form h2{margin-top:10px}
 .field input,.field select{min-width:0}
 @media(max-width:560px){.form[data-form^="a"] .row2{grid-template-columns:1fr}}
+/* 둘러보기판 */
+.demobar{background:#2B2620;color:#F6F1E7;font-size:13.5px}
+.dbin{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;min-height:40px;padding-top:4px;padding-bottom:4px}
+.dbt{flex:1 1 180px}
+.dbp{display:inline-flex;gap:4px}
+.dbp button,.dbr{min-height:30px;padding:0 10px;border-radius:999px;border:1px solid #6B6155;color:#F6F1E7;font-size:13px}
+.dbp button[aria-pressed=true]{background:#F6F1E7;color:#2B2620;font-weight:700}
+.demochoice{display:grid;gap:12px;margin-top:20px}
+@media(min-width:620px){.demochoice{grid-template-columns:repeat(3,1fr)}}
+.dcard{display:grid;justify-items:start;gap:6px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;min-height:150px}
+.dcard b{font-family:var(--fs);font-size:20px}
+.dcard span:last-child{color:var(--sub);font-size:14.5px;line-height:1.5}
+@media(hover:hover){.dcard:hover{border-color:var(--red)}}

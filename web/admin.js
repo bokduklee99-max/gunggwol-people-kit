@@ -73,6 +73,7 @@
       ${x('a-meet', '집결 안내', s.meet_text, '예: 9:20까지 경복궁 매표소 앞(3호선 경복궁역 5번 출구)')}
       ${x('a-museum', '박물관 앞 집합 시각', s.museum_time, '예: 10:45 · 궁 미션을 마치고 모이는 시각. 함께 다니기 시간 어림에도 쓰오.', 20)}
       <h2>날짜·시각 (서울 시각)</h2>
+      ${window.CFG && CFG.demo ? '<div class="banner info">둘러보기판에서는 날짜·시각을 위쪽 막대의 [행사 전·현장·엔딩 열림]으로 바꾸시오. 아래 칸은 저장해도 바뀌지 않소.</div>' : ''}
       <div class="row2">${t('a-role', '역할 고르기 마감', s.role_change_until, '이때까지 역할을 바꿀 수 있소.')}${t('a-mopen', '미션 시작', s.mission_open_at, '출석·사진·일기를 이때부터 저장하오.')}</div>
       <div class="row2">${t('a-eopen', '엔딩 열림', s.ending_open_at, '모든 학생에게 한꺼번에 열리오.')}${t('a-mclose', '미션 마감', s.mission_close_at, '사진·일기 저장 끝. 늦게 올리는 학생을 생각해 넉넉히.')}</div>
       <div class="row2">${t('a-eclose', '엔딩 한마디·소감 마감', s.ending_close_at, '미션 마감과 같거나 늦게. 늦추면 소감만 더 받을 수 있소.')}<div></div></div>
